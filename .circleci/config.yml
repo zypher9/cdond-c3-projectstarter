@@ -33,69 +33,102 @@ commands:
             fi
             
 jobs:
+
   build-frontend:
     docker:
-      - image: circleci/node:13.8.0
+      - image: circleci/node:latest
     steps:
       - checkout
-      - restore_cache:
-          keys: [frontend-build]
       - run:
-          name: Build front-end
+          name: Install dependencies
           command: |
-            # Your code here
-            exit 1
-      - save_cache:
-          paths: [frontend/node_modules]
-          key: frontend-build
-
-  build-backend:
+            cd frontend
+            npm install
+      - run:
+          name: Compile the code
+          command: |
+            cd frontend
+            npm run build
+  
+   test-frontend:
     docker:
-      - image: circleci/node:13.8.0
+      - image: circleci/node:latest
     steps:
       - checkout
-      - restore_cache:
-          keys: [backend-build]
       - run:
-          name: Back-end build
+          name: Install dependencies
           command: |
-             # Your code here
-             exit 1
-      - save_cache:
-          paths: [backend/node_modules]
-          key: backend-build
-
-  test-frontend:
-    docker:
-      # Docker image here
-    steps:
-      # Checkout code from git
-      # Restore from cache
-      # Your job code here
-                
-  test-backend:
-    docker:
-      # Docker image here
-    steps:
-      # Checkout code from git
-      # Restore from cache
-      # Your job code here
-            
+            cd frontend
+            npm install
+      - run:
+          name: Test the code
+          command: |
+            cd frontend
+            npm run test
+  
   scan-frontend:
     docker:
-      # Docker image here
+      - image: circleci/node:latest
     steps:
-      # Checkout code from git
-      # Restore from cache
-      # Your job code here
+      - checkout
+      - run:
+          name: Install dependencies
+          command: |
+            cd frontend
+            npm install
+      - run:
+          name: Scan the code
+          command: |
+            cd frontend
+            npm audit fix --audit-level=critical --force
+  
+  build-backend:
+    docker:
+      - image: circlici/node:latest
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: |
+            cd backend
+            npm install
+      - run:
+          name: Compile the code
+          command: |
+            cd backend
+            npm run build
+
+  test-backend:
+    docker:
+      - image: circleci/node:latest
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: |
+            cd backend
+            npm install
+      - run:
+          name: Test the code
+          command: |
+            cd backend
+            npm run test
 
   scan-backend:
     docker:
-      # Docker image here
+      - image: circleci/node:latest
     steps:
-      # Checkout code from git
-      # Restore from cache
-      # Your job code here
+      - checkout
+      - run:
+          name: Install dependencies
+          command: |
+            cd backend
+            npm install
+      - run:
+          name: Scan the code
+          command: |
+            cd backend
+            npm audit fix --audit-level=critical --force
 
   deploy-infrastructure:
     docker:
@@ -110,8 +143,8 @@ jobs:
               --stack-name "Udapeople-backend-${CIRCLE_WORKFLOW_ID}" \
               --template-file .circleci/files/backend.yml \
               --parameter-overrides ID=${CIRCLE_WORKFLOW_ID} \
-              --region ${AWS_DEFAULT_REGION} 
-              exit 1
+              --region ${AWS_DEFAULT_REGION}
+              
       - run:
           name: Ensure front-end infrastructure exist
           command: |
@@ -120,7 +153,7 @@ jobs:
               --stack-name "Udapeople-frontend-${CIRCLE_WORKFLOW_ID}" \
               --parameter-overrides ID=${CIRCLE_WORKFLOW_ID} \
               --region ${AWS_DEFAULT_REGION}
-              exit 1
+              
       - run:
           name: Add back-end ip to ansible inventory
           command: |
