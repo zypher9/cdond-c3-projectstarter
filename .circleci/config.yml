@@ -100,7 +100,7 @@ jobs:
           name: Analyze the code
           command: |
             cd frontend
-           npm audit --audit-level=critical
+            npm audit --audit-level=critical
   build-backend:
     docker:
       - image: circleci/node:13.8.0
