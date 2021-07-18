@@ -1,7 +1,5 @@
 version: 2.1
 
-### It's a good practice to keep your commands at the top of the config file. In this project, you'll need at least 2 commands:
-
 commands:
   destroy-environment:
     description: Destroy all cloudformation stacks given a workflow ID.
@@ -45,7 +43,7 @@ commands:
             cat ./inventory
           when: on_fail
       - add_ssh_keys:
-          fingerprints: ["a0:2e:f2:a1:47:58:b7:00:6d:c5:07:a9:38:20:2c:e6"] # get it from CircleCI -> Project Settings -> SSH Keys -> Additional SSH Keys
+          fingerprints: ["a0:2e:f2:a1:47:58:b7:00:6d:c5:07:a9:38:20:2c:e6"]           
       - run:
           name: Revert the last migration
           command: |
