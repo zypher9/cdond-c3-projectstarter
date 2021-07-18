@@ -196,7 +196,7 @@ jobs:
       - checkout
       - add_ssh_keys:
           fingerprints: ["a0:2e:f2:a1:47:58:b7:00:6d:c5:07:a9:38:20:2c:e6"]
-      - attach_workspace:
+      - attachworkspace:
           at: .
       - run:
           name: Install dependencies
@@ -224,7 +224,7 @@ jobs:
     steps:
       # Checkout code from git
       -checkout
-      - attach_workspace:
+      - attachworkspace:
           at: .
       - run:
           name: Install AWS CLI dependencies
@@ -262,7 +262,7 @@ jobs:
       -image: circleci/node:latest
     steps:
       - checkout
-      - attach_workspace:
+      - attachworkspace:
           at: .
       - run:
           name: Install AWS CLI dependencies
@@ -304,7 +304,7 @@ jobs:
       - checkout
       - add_ssh_keys:
           fingerprints: ["a0:2e:f2:a1:47:58:b7:00:6d:c5:07:a9:38:20:2c:e6"]
-      - attach_workspace:
+      - attachworkspace:
           at: .
       - run:
           name: Install dependencies
@@ -334,7 +334,7 @@ jobs:
       -image: python:3.9.0-alpine
     steps:
       - checkout
-      - attach_workspace:
+      - attachworkspace:
           at: .
       - run:
           name: Install dependencies
