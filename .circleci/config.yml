@@ -12,7 +12,6 @@ commands:
           command: |
             # Your code here
             exit 1
-
   revert-migrations:
     description: Revert the last migration if successfully run in the current workflow.
     parameters:
@@ -97,7 +96,6 @@ jobs:
           command: |
             cd backend
             npm run build
-
   test-backend:
     docker:
       - image: circleci/node:latest
@@ -113,7 +111,6 @@ jobs:
           command: |
             cd backend
             npm run test
-
   scan-backend:
     docker:
       - image: circleci/node:latest
@@ -129,7 +126,6 @@ jobs:
           command: |
             cd backend
             npm audit fix --audit-level=critical --force
-
   deploy-infrastructure:
     docker:
       # Docker image here that supports AWS CLI
@@ -296,7 +292,6 @@ cleanup:
               # your code here
             fi
             
-
 workflows:
   default:
     jobs:
