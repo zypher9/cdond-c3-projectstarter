@@ -7,9 +7,9 @@ commands:
       - run:
           name: Delete all files in the current S3 bucket
           command: |
-            if aws s3api head-bucket --bucket udapeople-${CIRCLE_WORKFLOW_ID}
+            if aws s3api head-bucket --bucket udapeople-s3bucket-${CIRCLE_WORKFLOW_ID}
             then
-              aws s3 rm s3://udapeople-${CIRCLE_WORKFLOW_ID}/ --recursive
+              aws s3 rm s3://udapeople-s3bucket-${CIRCLE_WORKFLOW_ID}/ --recursive
             fi
           when: on_fail
       - run:
@@ -44,7 +44,6 @@ commands:
           when: on_fail
       - add_ssh_keys:
           fingerprints: ["a0:2e:f2:a1:47:58:b7:00:6d:c5:07:a9:38:20:2c:e6"]
-      - run:
           name: Revert the last migration
           command: |
             printenv >> ./backend/.env
@@ -55,10 +54,12 @@ commands:
 parameters:
   circleci_image:
     type: string
-    default: circleci/node:latest
+    default: circleci/node:13.8.0
   py_alp_image:
     type: string
     default: python:3.7-alpine3.11
+
+jobs:
 
   build-frontend:
     docker:
@@ -151,7 +152,7 @@ parameters:
             cd backend
             npm install
       - run:
-          name: Analyze the code
+          name: Scan the code
           command: |
             cd backend
             npm audit fix --audit-level=critical --force
@@ -244,7 +245,7 @@ parameters:
             cd frontend
             npm install
             npm run build
-      - run:
+      - run: 
           name: Copy built frontend files to the S3 bucket
           command: |
             aws s3 cp ./frontend/dist s3://udapeople-s3bucket-${CIRCLE_WORKFLOW_ID}/ --recursive
@@ -266,7 +267,7 @@ parameters:
       - run:
           name: Smoke test on frontend
           command: |
-            URL="http://udapeople-s3bucket-${CIRCLE_WORKFLOW_ID}.s3-website.us-east-1.amazonaws.com/#/employees"
+            URL="http://udapeople-s3bucket-${CIRCLE_WORKFLOW_ID}.s3-website.us-east-2.amazonaws.com/#/employees"
             if curl -s ${URL} | grep "Welcome"
             then
               return 0
@@ -320,10 +321,7 @@ parameters:
 workflows:
   frontend:
     jobs:
-      - build-frontend:
-          filters:
-            branches:
-              ignore: master
+      - build-frontend
       - test-frontend:
           requires:
             - build-frontend
@@ -338,10 +336,7 @@ workflows:
               ignore: master
   backend:
     jobs:
-      - build-backend:
-          filters:
-            branches:
-              ignore: master
+      - build-backend
       - test-backend:
           requires:
             - build-backend
@@ -356,10 +351,7 @@ workflows:
               ignore: master
   deploy:
     jobs:
-      - create-new-infrastructure:
-          filters:
-            branches:
-              only: master
+      - create-new-infrastructure
       - deploy-backend:
           requires:
             - create-new-infrastructure
