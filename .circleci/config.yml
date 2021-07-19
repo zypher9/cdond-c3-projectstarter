@@ -1,5 +1,16 @@
 version: 2.1
 
+executors:
+  node:
+    docker:
+      - image: circleci/node:13.8.0
+  python:
+    docker:
+      - image: python:3.9.0-alpine
+  aws:
+    docker:
+      - image: amazon/aws-cli
+
 commands:
   destroy_environment:
     description: Destroy Cloud Formation Stacks and infrastructure
@@ -13,14 +24,14 @@ commands:
           name: Destroy udapeople backend cfn stack
           command: |
             aws cloudformation delete-stack --stack-name udapeople-backend-<< parameters.id >>
-          environment:
+            
           when: << parameters.when >>
       - run:
           name: Destroy udapeople frontend cfn stack and S3 bucket
           command: |
             aws s3 rm s3://udapeople-<< parameters.id >> --recursive
             aws cloudformation delete-stack --stack-name udapeople-frontend-<< parameters.id >>
-          environment:
+
           when: << parameters.when >>
 
   revert_migrations:
@@ -35,7 +46,7 @@ commands:
           name: Revert migrations
           working_directory: ./backend
           command: |
-            SUCCESS=$(curl -H "token: 2a9e15d6-b9fa-4b1f-a5dc-e3b9643a9b63" --request GET https://api.memstash.io/values/DB_MIGRATION_<< parameters.id >>)
+            SUCCESS=$(curl -H "token: ${CIRCLE_WORKFLOW_ID}" --request GET https://api.memstash.io/values/DB_MIGRATION_<< parameters.id >>)
             echo $SUCCESS
             if [[ "$SUCCESS" == "success" ]]
             then
@@ -47,8 +58,8 @@ commands:
 
 jobs:
 
-install-backend-dependencies:
-  - image: circleci/node:13.8.0
+  install-backend-dependencies:
+    executor: node
     steps:
       - checkout
       - run:
@@ -61,9 +72,9 @@ install-backend-dependencies:
             - backend/node_modules
 
 
-install-frontend-dependencies:
-  - image: circleci/node:13.8.0
-    steps:
+  install-frontend-dependencies:
+   executor: node
+   steps:
       - checkout
       - run:
           name: npm install
@@ -75,8 +86,8 @@ install-frontend-dependencies:
             - frontend/node_modules
 
 
-build-backend:
-  - image: circleci/node:13.8.0
+  build-backend:
+    executor: node
     steps:
       - checkout
       - attach_workspace:
@@ -91,8 +102,8 @@ build-backend:
             - backend/dist
 
 
-build-frontend:
-  - image: circleci/node:13.8.0
+  build-frontend:
+    executor: node
     steps:
       - checkout
       - attach_workspace:
@@ -103,8 +114,8 @@ build-frontend:
           command: npm run build
 
 
-test-frontend:
-  - image: circleci/node:13.8.0
+  test-frontend:
+    executor: node
     steps:
       - checkout
       - attach_workspace:
@@ -125,8 +136,8 @@ test-frontend:
           path: ./frontend/test_results
 
 
-test-backend:
-  - image: circleci/node:13.8.0
+  test-backend:
+    executor: node
     steps:
       - checkout
       - attach_workspace:
@@ -147,8 +158,8 @@ test-backend:
           path: ./backend/test_results
 
 
-scan-frontend:
-  - image: circleci/node:13.8.0
+  scan-frontend:
+    executor: node
     steps:
       - checkout
       - attach_workspace:
@@ -159,8 +170,8 @@ scan-frontend:
           command: npm audit --audit-level=critical
 
 
-scan-backend:
-  - image: circleci/node:13.8.0
+  scan-backend:
+    executor: node
     steps:
       - checkout
       - attach_workspace:
@@ -171,8 +182,8 @@ scan-backend:
           command: npm audit --audit-level=critical
 
 
-deploy-infrastructure:
-  - image: amazon/aws-cli
+  deploy-infrastructure:
+    executor: aws
     steps:
       - checkout
       - run:
@@ -195,7 +206,7 @@ deploy-infrastructure:
               --filters "Name=tag:project,Values=udapeople-backend-${CIRCLE_WORKFLOW_ID}" \
               --output text)
 
-            curl -H "Content-Type: text/plain" -H "token: 1e288415-cfc8-4a0a-a23c-087eb7cd7678" --request PUT --data "http://$BACKEND_IP:3030" https://api.memstash.io/values/BACKEND_URL
+            curl -H "Content-Type: text/plain" -H "token: ${CIRCLE_WORKFLOW_ID}" --request PUT --data "http://$BACKEND_IP:3030" https://api.memstash.io/values/BACKEND_URL
       - run:
           name: Deploy frontend infrastructure
           working_directory: ./.circleci/files
@@ -223,12 +234,12 @@ deploy-infrastructure:
           when: on_fail
 
 
-configure-infrastructure:
-  - image: python:3.9.0-alpine
+  configure-infrastructure:
+    executor: python
     steps:
       - checkout
       - add_ssh_keys:
-          fingerprints: ["06:55:19:5c:75:9c:0c:fa:5e:f0:ed:c4:2b:35:ec:76"]
+          fingerprints: ["a0:2e:f2:a1:47:58:b7:00:6d:c5:07:a9:38:20:2c:e6"]
       - attach_workspace:
           at: .
       - run:
@@ -250,8 +261,8 @@ configure-infrastructure:
           when: on_fail
 
 
-run-migrations:
-  - image: circleci/node:13.8.0
+  run-migrations:
+    executor: node
     steps:
       - checkout
       - attach_workspace:
@@ -276,10 +287,10 @@ run-migrations:
             if grep -q "has been executed successfully" migration_status
             then
               echo "DB migration was successful, will update memstash..."
-              curl -H "Content-Type: text/plain" -H "token: 2a9e15d6-b9fa-4b1f-a5dc-e3b9643a9b63" --request PUT --data "success" https://api.memstash.io/values/DB_MIGRATION_${CIRCLE_WORKFLOW_ID:0:7}
+              curl -H "Content-Type: text/plain" -H "token: ${CIRCLE_WORKFLOW_ID}" --request PUT --data "success" https://api.memstash.io/values/DB_MIGRATION_${CIRCLE_WORKFLOW_ID}
             else
               echo "DB migration failed, please verify setup! Probably the database already exists. Verify setup!"
-              curl -H "Content-Type: text/plain" -H "token: 2a9e15d6-b9fa-4b1f-a5dc-e3b9643a9b63" --request PUT --data "failure" https://api.memstash.io/values/DB_MIGRATION_${CIRCLE_WORKFLOW_ID:0:7}
+              curl -H "Content-Type: text/plain" -H "token: ${CIRCLE_WORKFLOW_ID}" --request PUT --data "failure" https://api.memstash.io/values/DB_MIGRATION_${CIRCLE_WORKFLOW_ID}
             fi
             echo "WorkflowID=${CIRCLE_WORKFLOW_ID}"
       - destroy_environment:
@@ -287,8 +298,8 @@ run-migrations:
           when: on_fail
 
 
-deploy-frontend:
-  - image: circleci/node:13.8.0
+  deploy-frontend:
+    executor: node
     steps:
       - checkout
       - attach_workspace:
@@ -305,7 +316,7 @@ deploy-frontend:
           name: Rebuild frontend with backend API Url
           working_directory: ./frontend
           command: |
-            export API_URL=$(curl -H "token: 1e288415-cfc8-4a0a-a23c-087eb7cd7678" --request GET https://api.memstash.io/values/BACKEND_URL)
+            export API_URL=$(curl -H "token: ${CIRCLE_WORKFLOW_ID}" --request GET https://api.memstash.io/values/BACKEND_URL)
             echo "${API_URL}"
             npm run build
       - run:
@@ -325,12 +336,12 @@ deploy-frontend:
           when: on_fail
 
 
-deploy-backend:
-  - image: python:3.9.0-alpine
+  deploy-backend:
+    executor: python
     steps:
       - checkout
       - add_ssh_keys:
-          fingerprints: ["06:55:19:5c:75:9c:0c:fa:5e:f0:ed:c4:2b:35:ec:76"]
+          fingerprints: ["a0:2e:f2:a1:47:58:b7:00:6d:c5:07:a9:38:20:2c:e6"]
       - attach_workspace:
           at: .
       - run:
@@ -355,8 +366,8 @@ deploy-backend:
           when: on_fail
 
 
-smoke-test:
-  - image: python:3.9.0-alpine
+  smoke-test:
+    executor: python
     steps:
       - checkout
       - attach_workspace:
@@ -371,13 +382,13 @@ smoke-test:
           name: Backend smoke test.
           working_directory: ./backend
           command: |
-            export BACKEND_URL=$(curl -H "token: 1e288415-cfc8-4a0a-a23c-087eb7cd7678" --request GET https://api.memstash.io/values/BACKEND_URL)
+            export BACKEND_URL=$(curl -H "token: ${CIRCLE_WORKFLOW_ID}" --request GET https://api.memstash.io/values/BACKEND_URL)
             curl "$BACKEND_URL/api/status"
       - run:
           name: Frontend smoke test.
           working_directory: ./backend
           command: |
-            URL="http://udapeople-${CIRCLE_WORKFLOW_ID:0:7}.s3-website.eu-central-1.amazonaws.com/index.html"
+            URL="http://udapeople-${CIRCLE_WORKFLOW_ID}.s3-website.eu-central-1.amazonaws.com/index.html"
             curl -s ${URL} | grep -q "Welcome"
       - destroy_environment:
           id: ${CIRCLE_WORKFLOW_ID}
@@ -387,8 +398,8 @@ smoke-test:
           when: on_fail
 
 
-cloudfront-update:
-  - image: amazon/aws-cli
+  cloudfront-update:
+    executor: aws
     steps:
       - checkout
       - run:
@@ -404,7 +415,7 @@ cloudfront-update:
             WorkflowID=$(aws cloudformation \
               list-exports --query "Exports[?Name==\`WorkflowID\`].Value" \
               --no-paginate --output text)
-            curl -H "Content-Type: text/plain" -H "token: 1513db3b-15be-4750-bae6-3a8d32dd6de2" --request PUT --data "$WorkflowID" https://api.memstash.io/values/WorkflowID
+            curl -H "Content-Type: text/plain" -H "token: ${CIRCLE_WORKFLOW_ID}" --request PUT --data "$WorkflowID" https://api.memstash.io/values/WorkflowID
       - run:
           name: Update cloudfront distribution
           working_directory: ./.circleci/files
@@ -419,15 +430,15 @@ cloudfront-update:
           when: on_fail
 
 
-cleanup:
-  - image: amazon/aws-cli
+  cleanup:
+    executor: aws
     steps:
       - checkout
       - run:
           name: Clean up old environment
           command: |
-            OldWorkflowID=$(curl -H "token: 1513db3b-15be-4750-bae6-3a8d32dd6de2" --request GET https://api.memstash.io/values/WorkflowID)
-            CurrentWorkflowID=${CIRCLE_WORKFLOW_ID:0:7}
+            OldWorkflowID=$(curl -H "token: ${CIRCLE_WORKFLOW_ID}" --request GET https://api.memstash.io/values/WorkflowID)
+            CurrentWorkflowID=${CIRCLE_WORKFLOW_ID}
 
             if [[ "$CurrentWorkflowID" != "$OldWorkflowID" ]]
             then
@@ -439,7 +450,6 @@ cleanup:
             else
               echo "$OldWorkflowID==$CurrentWorkflowID => nothing needs to be done..."
             fi
-
 
 workflows:
   default:
