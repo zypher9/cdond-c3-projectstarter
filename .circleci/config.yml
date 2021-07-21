@@ -285,38 +285,7 @@ jobs:
             else
               return 1
             fi
-#      - revert-migration
-#      - destroy-environment
 
-#  delete-old-infrastructure:
-    docker:
-      - image: amazon/aws-cli
-    steps:
-      - checkout
-      - run:
-          name: Promote the new deployment and delete the old one
-          command: |
-            OLD_CIRCLE_WORKFLOW_ID=$(aws cloudformation list-exports --query "Exports[?Name=='CircleCI-WorkflowID'].Value" --output text)
-            echo OLD_CIRCLE_WORKFLOW_ID=${OLD_CIRCLE_WORKFLOW_ID}
-            STACKS=$(aws cloudformation list-stacks --query "StackSummaries[*].StackName" --stack-status-filter UPDATE_COMPLETE CREATE_COMPLETE --output text)
-            echo STACKS=${STACKS}
-            echo "Create/Update CloudFront"
-            aws cloudformation deploy \
-              --stack-name udapeople-cloudfront \
-              --template-file .circleci/files/cloudfront.yml \
-              --region ${AWS_DEFAULT_REGION} \
-              --parameter-overrides ID="${CIRCLE_WORKFLOW_ID}"
-            echo "Delete old infrastructure"
-            if [ -n "${OLD_CIRCLE_WORKFLOW_ID}" ] && [[ "${STACKS[@]}" =~ "${OLD_CIRCLE_WORKFLOW_ID}" ]]
-            then
-              echo deleting all files at S3 bucket udapeople-${OLD_CIRCLE_WORKFLOW_ID}
-              aws s3 rm s3://udapeople-${OLD_CIRCLE_WORKFLOW_ID}/ --recursive
-              echo deleting stack udapeople-frontend-${OLD_CIRCLE_WORKFLOW_ID}
-              aws cloudformation delete-stack --stack-name udapeople-frontend-${OLD_CIRCLE_WORKFLOW_ID}
-              echo deleting stack udapeople-backend-${OLD_CIRCLE_WORKFLOW_ID}
-              aws cloudformation delete-stack --stack-name udapeople-backend-${OLD_CIRCLE_WORKFLOW_ID}
-            fi
-      - destroy-environment
 
 workflows:
   frontend:
