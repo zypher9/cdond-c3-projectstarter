@@ -1,428 +1,372 @@
 version: 2.1
 
-### It's a good practice to keep your commands at the top of the config file. In this project, you'll need at least 2 commands:
-
 commands:
-  destroy_environment:
-    description: Destroy Cloud Formation Stacks in case of errors during infrastructure setup
-    parameters:
-      when:
-        type: string
-      id:
-        type: string
+  destroy-environment:
+    description: Destroy all cloudformation stacks given a workflow ID.
     steps:
       - run:
-          name: Destroy udapeople backend cfn stack
+          name: Delete all files in the current S3 bucket
           command: |
-            aws cloudformation delete-stack --stack-name udapeople-backend-<< parameters.id >>
-          environment:
-          when: << parameters.when >>
+            if aws s3api head-bucket --bucket udapeople-${CIRCLE_WORKFLOW_ID}
+            then
+              aws s3 rm s3://udapeople-${CIRCLE_WORKFLOW_ID}/ --recursive
+            fi
+          when: on_fail
       - run:
-          name: Destroy udapeople frontend cfn stack and S3 bucket
+          name: Delete the current AWS CloudFormation stacks
           command: |
-            aws s3 rm s3://udapeople-<< parameters.id >> --recursive
-            aws cloudformation delete-stack --stack-name udapeople-frontend-<< parameters.id >>
-          environment:
-          when: << parameters.when >>
+            if aws cloudformation wait stack-exists --stack-name udapeople-cloudfront
+            then 
+              aws cloudformation delete-stack --stack-name udapeople-cloudfront
+            fi
+            if aws cloudformation wait stack-exists --stack-name udapeople-frontend-${CIRCLE_WORKFLOW_ID}
+            then 
+              aws cloudformation delete-stack --stack-name udapeople-frontend-${CIRCLE_WORKFLOW_ID}
+            fi
+            if aws cloudformation wait stack-exists --stack-name udapeople-backend-${CIRCLE_WORKFLOW_ID}
+            then
+              aws cloudformation delete-stack --stack-name udapeople-backend-${CIRCLE_WORKFLOW_ID}
+            fi
+          when: on_fail
 
-#   revert-migration:
-#     description: Revert the last migration if successfully run in the current workflow.
-#     ...
+  revert-migration:
+    description: Revert the latest migration
+    steps:
+      - run:
+          name: Get the public DNS of EC2 instance from https://memstash.io/
+          command: |
+            PUBLIC_DNS=$(curl -H "token: ${CIRCLE_WORKFLOW_ID}" --request GET https://api.memstash.io/values/public_dns)
+            echo ${PUBLIC_DNS}
+            cd .circleci/ansible/
+            echo "[all]" > ./inventory
+            echo ${PUBLIC_DNS} >> ./inventory
+            cat ./inventory
+          when: on_fail
+      - add_ssh_keys:
+          fingerprints: ["a0:2e:f2:a1:47:58:b7:00:6d:c5:07:a9:38:20:2c:e6"]
+          name: Revert the last migration
+          command: |
+            printenv >> ./backend/.env
+            cd .circleci/ansible/
+            ansible-playbook -i ./inventory db_rollback.yml
+          when: on_fail
 
-executors:
-  node:
-    docker:
-      - image: circleci/node:13.8.0
-  python:
-    docker:
-      - image: python:3.9.0-alpine
-  aws:
-    docker:
-      - image: amazon/aws-cli
+parameters:
+  circleci_image:
+    type: string
+    default: circleci/node:13.8.0
+  py_alp_image:
+    type: string
+    default: python:3.7-alpine3.11
 
 jobs:
 
-  install-backend-dependencies:
-    executor: node
-    steps:
-      - checkout
-      - run:
-          name: npm install
-          working_directory: ./backend
-          command: ls -la && npm install
-      - save_cache:
-          paths:
-            - backend/node_modules
-          key: backend-deps
-
-
-  install-frontend-dependencies:
-   executor: node
-   steps:
-      - checkout
-      - run:
-          name: npm install
-          working_directory: ./frontend
-          command: ls -la && npm install
-      - save_cache:
-          paths:
-            - frontend/node_modules
-          key: frontend-dependencies
-
-
-  build-backend:
-    executor: node
-    steps:
-      - checkout
-      - restore_cache:
-          key: backend-deps
-      - run:
-          name: npm run build
-          working_directory: ./backend
-          command: npm run build
-
-
   build-frontend:
-    executor: node
+    docker:
+      - image: << pipeline.parameters.circleci_image >>
     steps:
       - checkout
-      - restore_cache:
-          key: frontend-dependencies
       - run:
-          name: npm run build
-          working_directory: ./frontend
-          command: npm run build
-
+          name: Install dependencies
+          command: |
+            cd frontend
+            npm install
+      - run:
+          name: Compile the code
+          command: |
+            cd frontend
+            npm run build
 
   test-frontend:
-    executor: node
+    docker:
+      - image: << pipeline.parameters.circleci_image >>
     steps:
       - checkout
-      - restore_cache:
-          key: frontend-dependencies
       - run:
-          name: Install junit coverage reporter
-          working_directory: ./frontend
-          command: npm install --save-dev jest-junit
+          name: Install dependencies
+          command: |
+            cd frontend
+            npm install
       - run:
-          name: Run tests with JUnit as reporter
-          working_directory: ./frontend
-          command: npm test -- --ci --runInBand --reporters=default --reporters=jest-junit && pwd && ls -la /tmp
-          environment:
-            JEST_JUNIT_OUTPUT_DIR: ./test_results
-      - store_test_results:
-          path: ./frontend/test_results
-      - store_artifacts:
-          path: ./frontend/test_results
-
-
-  test-backend:
-    executor: node
-    steps:
-      - checkout
-      - restore_cache:
-          key: backend-deps
-      - run:
-          name: Install junit coverage reporter
-          working_directory: ./backend
-          command: npm install --save-dev jest-junit
-      - run:
-          name: Run tests with JUnit as reporter
-          working_directory: ./backend
-          command: npm test -- --ci --runInBand --reporters=default --reporters=jest-junit && pwd
-          environment:
-            JEST_JUNIT_OUTPUT_DIR: ./test_results
-      - store_test_results:
-          path: ./backend/test_results
-      - store_artifacts:
-          path: ./backend/test_results
-
+          name: Test the code
+          command: |
+            cd frontend
+            npm run test
 
   scan-frontend:
-    executor: node
+    docker:
+      - image: << pipeline.parameters.circleci_image >>
     steps:
       - checkout
-      - restore_cache:
-          key: frontend-dependencies
       - run:
-          name: Check Frontend against security vulnerabilities
-          working_directory: ./frontend
-          command: npm audit --audit-level=critical
+          name: Install dependencies
+          command: |
+            cd frontend
+            npm install
+      - run:
+          name: Scan the code
+          command: |
+            cd frontend
+            npm audit fix --audit-level=critical --force
 
+  build-backend:
+    docker:
+      - image: << pipeline.parameters.circleci_image >>
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: |
+            cd backend
+            npm install
+      - run:
+          name: Compile the code
+          command: |
+            cd backend
+            npm run build
+
+  test-backend:
+    docker:
+      - image: << pipeline.parameters.circleci_image >>
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: |
+            cd backend
+            npm install
+      - run:
+          name: Test the code
+          command: |
+            cd backend
+            npm run test
 
   scan-backend:
-    executor: node
-    steps:
-      - checkout
-      - restore_cache:
-          key: backend-dependencies
-      - run:
-          name: Check Backend against security vulnerabilities
-          working_directory: ./backend
-          command: npm audit fix --audit-level=critical --force
-
-
-  deploy-infrastructure:
-    executor: aws
+    docker:
+      - image: << pipeline.parameters.circleci_image >>
     steps:
       - checkout
       - run:
           name: Install dependencies
-          command: yum install -y tar gzip
-      - run:
-          name: Deploy backend infrastructure
-          working_directory: ./.circleci/files
           command: |
-            aws cloudformation deploy \
-              --template-file backend.yaml \
-              --stack-name "udapeople-backend-${CIRCLE_WORKFLOW_ID}" \
-              --parameter-overrides ID="${CIRCLE_WORKFLOW_ID}" \
-              --tags project=udapeople-backend
+            cd backend
+            npm install
       - run:
-          name: Save backend URL in memstash
+          name: Scan the code
           command: |
-            BACKEND_IP=$(aws ec2 describe-instances \
-              --query 'Reservations[*].Instances[*].PublicIpAddress' \
-              --filters "Name=tag:project,Values=udapeople-backend" \
-              --output text)
+            cd backend
+            npm audit fix --audit-level=critical --force
 
-            curl -H "Content-Type: text/plain" -H "token: ${CIRCLE_WORKFLOW_ID}" --request PUT --data "http://$BACKEND_IP:3030" https://api.memstash.io/values/BACKEND_IP
-      - run:
-          name: Deploy frontend infrastructure
-          working_directory: ./.circleci/files
-          command: |
-            aws cloudformation deploy \
-              --template-file frontend.yml \
-              --stack-name "udapeople-frontend-${CIRCLE_WORKFLOW_ID}" \
-              --parameter-overrides ID="${CIRCLE_WORKFLOW_ID}" \
-              --tags project=udapeople-frontend
-      - run:
-          name: Add backend ip to ansible inventory
-          working_directory: ./.circleci/ansible
-          command: |
-            aws ec2 describe-instances \
-              --query 'Reservations[*].Instances[*].PublicIpAddress' \
-              --filters "Name=tag:project,Values=udapeople-backend" \
-              --output text >> inventory
-            cat inventory
-      - persist_to_workspace:
-          root: .
-          paths:
-            - .circleci/ansible/inventory
-      - destroy_environment:
-          id: ${CIRCLE_WORKFLOW_ID}
-          when: on_fail
-
-
-  configure-infrastructure:
-    executor: python
+  create-new-infrastructure:
+    docker:
+      - image: amazon/aws-cli
     steps:
       - checkout
+      - run:
+          name: Create/Update frontend infrastructure via AWS CloudFormation
+          command: |
+            aws cloudformation deploy \
+              --stack-name udapeople-frontend-${CIRCLE_WORKFLOW_ID} \
+              --template-file .circleci/files/frontend.yml \
+              --region ${AWS_DEFAULT_REGION} \
+              --parameter-overrides ID="${CIRCLE_WORKFLOW_ID}"
+      - run:
+          name: Create/Update backend infrastructure via AWS CloudFormation
+          command: |
+            aws cloudformation deploy \
+              --stack-name udapeople-backend-${CIRCLE_WORKFLOW_ID} \
+              --template-file .circleci/files/backend.yml \
+              --region ${AWS_DEFAULT_REGION} \
+              --parameter-overrides ID="${CIRCLE_WORKFLOW_ID}"
+      - run:
+          name: Get and save public DNS of EC2 instance to https://memstash.io/
+          command: |
+            PUBLIC_DNS=$(aws ec2 describe-instances --region ${AWS_DEFAULT_REGION} --filters 'Name=tag:Name,Values=udapeople-backend-ec2-*' --query "Reservations[*].Instances[0].PublicDnsName" --output text)
+            echo ${PUBLIC_DNS}
+            curl -H "Content-Type: text/plain" \
+               -H "token: ${CIRCLE_WORKFLOW_ID}" \
+               --request PUT \
+               --data ${PUBLIC_DNS} \
+               https://api.memstash.io/values/public_dns
+      - destroy-environment
+
+  deploy-backend:
+    docker:
+      - image: << pipeline.parameters.py_alp_image >>
+    steps:
+      - checkout
+      - run:
+          name: Install system dependencies
+          command: |
+            apk add --no-cache curl
+            apk add --no-cache --upgrade bash
+            apk add --no-cache --update ansible
+            apk add --no-cache openssh-client
+            pip3 install awscli
+      - run:
+          name: Get the public DNS of EC2 instance from https://memstash.io/
+          command: |
+            PUBLIC_DNS=$(curl -H "token: ${CIRCLE_WORKFLOW_ID}" --request GET https://api.memstash.io/values/public_dns)
+            echo ${PUBLIC_DNS}
+            cd .circleci/ansible/
+            echo "[all]" > ./inventory
+            echo ${PUBLIC_DNS} >> ./inventory
+            cat ./inventory
       - add_ssh_keys:
-          fingerprints: ["06:55:19:5c:75:9c:0c:fa:5e:f0:ed:c4:2b:35:ec:76"]
-      - attach_workspace:
-          at: .
+          fingerprints: ["a0:2e:f2:a1:47:58:b7:00:6d:c5:07:a9:38:20:2c:e6"]
       - run:
-          name: Install dependencies
-          working_directory: ./.circleci/ansible
+          name: Configure server via ansible to deploy the backend
           command: |
-            apk add --update ansible
-            ansible --version
-      - run:
-          name: Configure server
-          working_directory: ./.circleci/ansible
-          command: |
-            pwd &&
-            ls -la
-            cat inventory
-            ansible-playbook -i inventory configure-server.yaml
-      - destroy_environment:
-          id: ${CIRCLE_WORKFLOW_ID}
-          when: on_fail
+            printenv >> ./backend/.env
+            cd .circleci/ansible/
+            ansible-playbook -i ./inventory deploy-backend.yml
+      - revert-migration
+      - destroy-environment
 
-
-  # deploy-infrastructure:
-  #   executor: aws
-  #   steps:
-  #     - checkout
-  #     - run:
-  #         name: Deploy EC2 instance on AWS with aws cli
-  #         working_directory: ./.circleci/files
-  #         command: |
-  #           aws cloudformation deploy \
-  #             --stack-name udapeople-${CIRCLE_WORKFLOW_ID} \
-  #             --template-file backend.yml \
-  #             --parameter-overrides ID="udapeople" \
-  #             --tags project=udapeople
-  #     - destroy_environment:
-  #         when: on_fail
-
-
-  # configure-infrastructure:
-  #   executor: python
-  #   steps:
-  #     - checkout
-  #     - add_ssh_keys:
-  #         fingerprints: ["06:55:19:5c:75:9c:0c:fa:5e:f0:ed:c4:2b:35:ec:76"]
-  #     - run:
-  #         name: Install dependencies
-  #         working_directory: ./.circleci/ansible
-  #         command: |
-  #           apk add --update ansible
-  #           ansible --version
-  #           pip install awscli
-  #           aws --version
-  #     - run:
-  #         name: Save EC2 IP address in ansible inventory file
-  #         working_directory: ./.circleci/ansible
-  #         command: |
-  #           aws ec2 describe-instances \
-  #             --query 'Reservations[*].Instances[*].PublicIpAddress' \
-  #             --filters "Name=tag:project,Values=udapeople" \
-  #             --output text >> inventory
-  #           cat inventory
-  #     - run:
-  #         name: Configure server
-  #         working_directory: ./.circleci/ansible
-  #         command: |
-  #           pwd &&
-  #           ls -la
-  #           cat inventory
-  #           ansible-playbook -i inventory deploy-server.yaml
-  #     - destroy_environment:
-  #         when: on_fail
-
-#  run-migrations:
-
-#  deploy-frontend:
-
-#  deploy-backend:
-
-  smoke_test:
-    executor: python
+  deploy-frontend:
+    docker:
+      - image: << pipeline.parameters.py_alp_image >>
     steps:
-      - run: apk add --update curl
+      - checkout
       - run:
-          name: smoke test.
+          name: Install system dependencies
           command: |
-            URL="https://google.com/"
-            if curl -s --head ${URL} # test if google.com exists
+            apk add --no-cache curl
+            apk add --no-cache --upgrade bash
+            apk add --no-cache --update npm
+            pip3 install awscli
+      - run:
+          name: Build the frontend
+          command: |
+            PUBLIC_DNS=$(curl -H "token: ${CIRCLE_WORKFLOW_ID}" --request GET https://api.memstash.io/values/public_dns)
+            echo ${PUBLIC_DNS}
+            export API_URL="http://${PUBLIC_DNS}:3030"
+            echo API_URL=${API_URL}
+            cd frontend
+            npm install
+            npm run build
+      - run: 
+          name: Copy built frontend files to the S3 bucket
+          command: |
+            aws s3 cp ./frontend/dist s3://udapeople-${CIRCLE_WORKFLOW_ID}/ --recursive
+      - destroy-environment
+
+  smoke-test:
+    docker:
+      - image: << pipeline.parameters.py_alp_image >>
+    steps:
+      - checkout
+      - run:
+          name: Install system dependencies
+          command: |
+            apk add --no-cache curl
+            apk add --no-cache --upgrade bash
+            apk add --no-cache --update ansible
+            apk add --no-cache openssh-client
+            pip3 install awscli
+      - run:
+          name: Smoke test on frontend
+          command: |
+            URL="http://udapeople-${CIRCLE_WORKFLOW_ID}.s3-website.us-east-1.amazonaws.com/#/employees"
+            if curl -s ${URL} | grep "Welcome"
             then
               return 0
             else
               return 1
             fi
+      - run:
+          name: Smoke test on backend
+          command: |
+            PUBLIC_DNS=$(curl -H "token: ${CIRCLE_WORKFLOW_ID}" --request GET https://api.memstash.io/values/public_dns)
+            echo ${PUBLIC_DNS}
+      - revert-migration
+      - destroy-environment
 
-#  cloudfront-update:
-
-  create_and_deploy_front_end:
-    executor: aws
+  delete-old-infrastructure:
+    docker:
+      - image: amazon/aws-cli
     steps:
       - checkout
       - run:
-          name: Create and deploy S3 frontend
-          working_directory: ./.circleci/files
+          name: Promote the new deployment and delete the old one
           command: |
+            OLD_CIRCLE_WORKFLOW_ID=$(aws cloudformation list-exports --query "Exports[?Name=='CircleCI-WorkflowID'].Value" --output text)
+            echo OLD_CIRCLE_WORKFLOW_ID=${OLD_CIRCLE_WORKFLOW_ID}
+            STACKS=$(aws cloudformation list-stacks --query "StackSummaries[*].StackName" --stack-status-filter UPDATE_COMPLETE CREATE_COMPLETE --output text)
+            echo STACKS=${STACKS}
+            echo "Create/Update CloudFront"
             aws cloudformation deploy \
-            --template-file bucket.yaml \
-            --stack-name "udapeople-${CIRCLE_WORKFLOW_ID}" \
-            --parameter-overrides PipelineID="${CIRCLE_WORKFLOW_ID}"
-      - run:
-          name: Upload new Website Content
-          working_directory: ./.circleci/files/website-content
-          command: |
-            aws s3 sync . s3://"${CIRCLE_WORKFLOW_ID}"
-
-  get_last_deployment_id:
-    executor: aws
-    steps:
-      - checkout
-      - run:
-          name: Retrieve latest PipelineID from cloud formation and store it in memstash for later use
-          working_directory: ./.circleci/files
-          command: |
-            PipelineID=$(aws cloudformation \
-            list-exports --query "Exports[?Name==\`PipelineID\`].Value" \
-            --no-paginate --output text)
-            curl -H "Content-Type: text/plain" -H "token: ${CIRCLE_WORKFLOW_ID}" --request PUT --data "$PipelineID" https://api.memstash.io/values/PipelineID
-
-  promote_to_production:
-    executor: aws
-    steps:
-      - checkout
-      - run:
-          name: Update frontend production environment
-          working_directory: ./.circleci/files
-          command: |
-            aws cloudformation deploy \
-            --template-file cloudfront.yml \
-            --stack-name udapeople-cloudfront-production \
-            --parameter-overrides WorkflowID="${CIRCLE_WORKFLOW_ID}" \
-            --tags project=udapeople
-
-  clean_up_old_front_end:
-    executor: aws
-    steps:
-      - checkout
-      - run:
-          name: Clean up old environment
-          command: |
-            OldPipelineID=$(curl -H "token: ${CIRCLE_WORKFLOW_ID}" --request GET https://api.memstash.io/values/PipelineID)
-            CurrentPipelineID=${CIRCLE_WORKFLOW_ID}
-
-            if [[ "$CurrentPipelineID" != "$OldPipelineID" ]]
+              --stack-name udapeople-cloudfront \
+              --template-file .circleci/files/cloudfront.yml \
+              --region ${AWS_DEFAULT_REGION} \
+              --parameter-overrides ID="${CIRCLE_WORKFLOW_ID}"
+            echo "Delete old infrastructure"
+            if [ -n "${OLD_CIRCLE_WORKFLOW_ID}" ] && [[ "${STACKS[@]}" =~ "${OLD_CIRCLE_WORKFLOW_ID}" ]]
             then
-              echo "$OldPipelineID!=$CurrentPipelineID => will delete old version"
-
-              aws s3 rm "s3://${OldPipelineID}" --recursive
-              aws cloudformation delete-stack --stack-name "udapeople-${OldPipelineID}"
-            else
-              echo "$OldPipelineID==$CurrentPipelineID => nothing to be done..."
+              echo deleting all files at S3 bucket udapeople-${OLD_CIRCLE_WORKFLOW_ID}
+              aws s3 rm s3://udapeople-${OLD_CIRCLE_WORKFLOW_ID}/ --recursive
+              echo deleting stack udapeople-frontend-${OLD_CIRCLE_WORKFLOW_ID}
+              aws cloudformation delete-stack --stack-name udapeople-frontend-${OLD_CIRCLE_WORKFLOW_ID}
+              echo deleting stack udapeople-backend-${OLD_CIRCLE_WORKFLOW_ID}
+              aws cloudformation delete-stack --stack-name udapeople-backend-${OLD_CIRCLE_WORKFLOW_ID}
             fi
+      - destroy-environment
 
 workflows:
-  default:
+  frontend:
     jobs:
-      ## BUILD AND DEPLOY
-      # - install-backend-dependencies
-      # - install-frontend-dependencies
-
-      # - build-backend:
-      #     requires:
-      #       - install-backend-dependencies
-      # - build-frontend:
-      #     requires:
-      #       - install-frontend-dependencies
-      # - test-backend:
-      #     requires:
-      #       -  build-backend
-      # - test-frontend:
-      #     requires:
-      #       -  build-frontend
-      # - scan-backend:
-      #     requires:
-      #       - build-backend
-      # - scan-frontend:
-      #     requires:
-      #       - build-frontend
-
-      ## INFRASTRUCTURE
-      - deploy-infrastructure:
+      - build-frontend
+      - test-frontend:
+          requires:
+            - build-frontend
           filters:
             branches:
-              only:
-                - master
-      - configure-infrastructure:
+              ignore: master
+      - scan-frontend:
           requires:
-            - deploy-infrastructure
-
-      # - create_and_deploy_front_end
-      # - get_last_deployment_id:
-      #     requires:
-      #       - create_and_deploy_front_end
-      # - promote_to_production:
-      #     requires:
-      #       - get_last_deployment_id
-      # - clean_up_old_front_end:
-      #     requires:
-      #       - promote_to_production
+            - test-frontend
+          filters:
+            branches:
+              ignore: master
+  backend:
+    jobs:
+      - build-backend
+      - test-backend:
+          requires:
+            - build-backend
+          filters:
+            branches:
+              ignore: master
+      - scan-backend:
+          requires:
+            - test-backend
+          filters:
+            branches:
+              ignore: master
+  deploy:
+    jobs:
+      - create-new-infrastructure
+      - deploy-backend:
+          requires:
+            - create-new-infrastructure
+          filters:
+            branches:
+              only: master
+      - deploy-frontend:
+          requires:
+            - deploy-backend
+          filters:
+            branches:
+              only: master
+      - smoke-test:
+          requires:
+            - deploy-frontend
+          filters:
+            branches:
+              only: master
+      - delete-old-infrastructure:
+          requires:
+            - smoke-test
+          filters:
+            branches:
+              only: master
