@@ -285,7 +285,9 @@ jobs:
             else
               return 1
             fi
-
+      #- revert-migration
+      #- destroy-aws-resource
+      
   delete-old-infrastructure:
     docker:
       - image: amazon/aws-cli
