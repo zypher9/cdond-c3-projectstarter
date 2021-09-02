@@ -285,8 +285,6 @@ jobs:
             else
               return 1
             fi
-      - revert-migration
-      - destroy-environment
 
   delete-old-infrastructure:
     docker:
