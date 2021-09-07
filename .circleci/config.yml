@@ -401,7 +401,7 @@ workflows:
               only: master
       - smoke-test:
           requires:
-            - deploy-frontend
+            - create-cloudfront
           filters:
             branches:
               only: master
