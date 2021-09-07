@@ -250,21 +250,6 @@ jobs:
             aws s3 cp ./frontend/dist s3://udapeople-${CIRCLE_WORKFLOW_ID}/ --recursive
       - destroy-environment
       
-  create-cloudfront:
-    docker:
-      - image: amazon/aws-cli
-    steps:
-      - checkout
-      - run:
-          name: Create/Update CloudFront via AWS CloudFormation
-          command: |
-            aws cloudformation deploy \
-              --stack-name udapeople-cloudfront \
-              --template-file .circleci/files/cloudfront.yml \
-              --region ${AWS_DEFAULT_REGION} \
-              --parameter-overrides ID="${CIRCLE_WORKFLOW_ID}"
-      - destroy-environment
-
   smoke-test:
     docker:
       - image: << pipeline.parameters.py_alp_image >>
@@ -302,20 +287,32 @@ jobs:
       - revert-migration
       - destroy-environment
 
-  update-cloudfront:
+  cloudfront-update:
     docker:
       - image: amazon/aws-cli
     steps:
       - checkout
       - run:
-          name: Create/Update CloudFront via AWS CloudFormation
+          name: Install dependencies
           command: |
+            # your code here
+            yum -y install tar gzip
+            # Install nodejs on Fedora Core based on nodesource website instructions
+            curl -sL https://rpm.nodesource.com/setup_lts.x | bash -
+            yum -y install nodejs
+      - run:
+          name: Update cloudfront distribution
+          command: |
+            # your code here
             aws cloudformation deploy \
-              --stack-name udapeople-cloudfront \
-              --template-file .circleci/files/cloudfront.yml \
-              --region ${AWS_DEFAULT_REGION} \
-              --parameter-overrides ID="${CIRCLE_WORKFLOW_ID}"
-      - destroy-environment
+            --template-file .circleci/files/cloudfront.yml \
+            --stack-name=udapeople-cloudfront \
+            --parameter-overrides WorkflowID="${CIRCLE_WORKFLOW_ID}" \
+            --tags project=udapeople
+
+      - revert-migrations
+      - destroy-environment 
+      
 
   #delete-old-infrastructure:
   #  docker:
@@ -393,19 +390,13 @@ workflows:
           filters:
             branches:
               only: master
-      - create-cloudfront:
+      - smoke-test:
           requires:
             - deploy-frontend
           filters:
             branches:
               only: master
-      - smoke-test:
-          requires:
-            - create-cloudfront
-          filters:
-            branches:
-              only: master
-      - update-cloudfront:
+      - cloudfront-update:
           requires:
             - smoke-test
           filters:
