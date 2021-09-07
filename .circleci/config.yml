@@ -60,7 +60,6 @@ parameters:
     default: python:3.7-alpine3.11
 
 jobs:
-
   build-frontend:
     docker:
       - image: << pipeline.parameters.circleci_image >>
@@ -245,7 +244,7 @@ jobs:
             cd frontend
             npm install
             npm run build
-      - run: 
+      - run:
           name: Copy built frontend files to the S3 bucket
           command: |
             aws s3 cp ./frontend/dist s3://udapeople-${CIRCLE_WORKFLOW_ID}/ --recursive
@@ -287,7 +286,22 @@ jobs:
             fi
       - revert-migration
       - destroy-environment
-      
+
+  update-cloudfront:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      - checkout
+      - run:
+          name: Create/Update CloudFront via AWS CloudFormation
+          command: |
+            aws cloudformation deploy \
+              --stack-name udapeople-cloudfront \
+              --template-file .circleci/files/cloudfront.yml \
+              --region ${AWS_DEFAULT_REGION} \
+              --parameter-overrides ID="${CIRCLE_WORKFLOW_ID}"
+      - destroy-environment
+
   delete-old-infrastructure:
     docker:
       - image: amazon/aws-cli
@@ -370,6 +384,13 @@ workflows:
           filters:
             branches:
               only: master
+      - update-cloudfront:
+          requires:
+            - smoke-test
+          filters:
+            branches:
+              only: master
+              
       - delete-old-infrastructure:
           requires:
             - smoke-test
