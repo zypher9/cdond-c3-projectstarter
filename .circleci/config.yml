@@ -403,7 +403,7 @@ workflows:
             branches:
               only: master
               
-#      - delete-old-infrastructure:
+#     - delete-old-infrastructure:
 #          requires:
 #            - smoke-test
 #          filters:
