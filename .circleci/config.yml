@@ -314,7 +314,7 @@ jobs:
       - destroy-environment 
       
 
-   delete-old-infrastructure:
+  delete-old-infrastructure:
      docker:
        - image: amazon/aws-cli
      steps:
